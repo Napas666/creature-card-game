@@ -1,0 +1,11 @@
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: #080818;
+  color: #dde;
+}
+
+code {
+  font-family: 'Courier New', monospace;
+}
