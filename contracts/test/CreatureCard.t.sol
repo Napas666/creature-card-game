@@ -26,7 +26,7 @@ contract CreatureCardTest is Test {
     function test_openPack() public {
         vm.deal(alice, 1 ether);
         vm.prank(alice);
-        uint256[] memory ids = minter.openPack{value: 0.03 ether}();
+        uint256[] memory ids = minter.openPack{value: 0.03 ether}(PackRarity.COMMON);
 
         assertEq(ids.length, 3);
         assertEq(card.ownerOf(ids[0]), alice);
@@ -38,7 +38,7 @@ contract CreatureCardTest is Test {
     function test_statsInRange() public {
         vm.deal(alice, 1 ether);
         vm.prank(alice);
-        uint256[] memory ids = minter.openPack{value: 0.03 ether}();
+        uint256[] memory ids = minter.openPack{value: 0.03 ether}(PackRarity.COMMON);
 
         for (uint256 i = 0; i < ids.length; i++) {
             CardStats memory s = card.getStats(ids[i]);
@@ -54,24 +54,20 @@ contract CreatureCardTest is Test {
         vm.deal(bob, 1 ether);
 
         vm.prank(alice);
-        uint256[] memory aCards = minter.openPack{value: 0.03 ether}();
+        uint256[] memory aCards = minter.openPack{value: 0.03 ether}(PackRarity.COMMON);
 
         vm.prank(bob);
-        uint256[] memory bCards = minter.openPack{value: 0.03 ether}();
+        uint256[] memory bCards = minter.openPack{value: 0.03 ether}(PackRarity.COMMON);
 
         uint256 aCard = aCards[0];
         uint256 bCard = bCards[0];
 
-        // Alice challenges Bob
+        // Alice battles Bob's card in one tx
         vm.prank(alice);
-        uint256 battleId = engine.challenge(aCard, bCard);
-
-        // Bob accepts
-        vm.prank(bob);
-        engine.acceptAndResolve(battleId, bCard);
+        uint256 battleId = engine.battle(aCard, bCard);
 
         Battle memory b = engine.getBattle(battleId);
-        assertTrue(b.winner != 0, "battle should have a winner");
+        assertTrue(b.timestamp != 0, "battle should exist");
         assertTrue(b.winner == aCard || b.winner == bCard, "winner should be one of the two cards");
 
         // Check win/loss records
@@ -93,7 +89,7 @@ contract CreatureCardTest is Test {
         uint256 before = alice.balance;
 
         vm.prank(alice);
-        minter.openPack{value: 0.1 ether}();
+        minter.openPack{value: 0.1 ether}(PackRarity.COMMON);
 
         // Should only charge 0.03 ether (3 cards × 0.01)
         assertEq(alice.balance, before - 0.03 ether);

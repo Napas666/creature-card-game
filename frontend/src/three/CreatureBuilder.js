@@ -1,184 +1,387 @@
 import * as THREE from 'three';
 import { statsToTraits } from '../utils/statsToTraits.js';
 
+/* ─── Material presets per ability type ─────────────────────────────────── */
+const MATS = {
+  FIRE:      { roughness: 0.55, metalness: 0.15, envMapIntensity: 0.8 },
+  ICE:       { roughness: 0.10, metalness: 0.05, envMapIntensity: 1.5 },
+  LIGHTNING: { roughness: 0.30, metalness: 0.80, envMapIntensity: 1.2 },
+  POISON:    { roughness: 0.80, metalness: 0.00, envMapIntensity: 0.4 },
+  VOID:      { roughness: 0.20, metalness: 0.60, envMapIntensity: 1.0 },
+};
+
 export class CreatureBuilder {
   constructor(cardStats) {
-    this.traits = statsToTraits(cardStats);
-    this.group  = new THREE.Group();
-    this._bodySize = { rx: 1, ry: 1, rz: 1 };
+    this.traits   = statsToTraits(cardStats);
+    this.group    = new THREE.Group();
+    this._bs      = { rx: 1, ry: 1, rz: 1 }; // body size cache
     this._build();
+  }
+
+  /* shared material factory */
+  _mat(colorHex, options = {}) {
+    const { atk, hp, spd, theme } = this.traits;
+    const preset = MATS[theme.name] ?? MATS.FIRE;
+    return new THREE.MeshStandardMaterial({
+      color:             colorHex,
+      emissive:          theme.emissive,
+      emissiveIntensity: options.emissiveIntensity ?? 0.12,
+      roughness:         options.roughness ?? preset.roughness,
+      metalness:         options.metalness ?? preset.metalness,
+      transparent:       options.transparent ?? false,
+      opacity:           options.opacity    ?? 1.0,
+      side:              options.side       ?? THREE.FrontSide,
+    });
   }
 
   _build() {
     const { atk, hp, spd, theme } = this.traits;
     this._addBody(hp, theme);
+    this._addNeck(hp, theme);
     this._addHead(hp, atk, theme);
-    this._addClaws(atk, theme);
-    this._addWings(spd, theme);
+    this._addLegs(hp, spd, theme);
+    this._addArms(atk, theme);
+    this._addTail(atk, hp, theme);
+    if (spd > 0.08) this._addWings(spd, theme);
     this._addAbilityAppendage(theme);
+    this._addInnerLight(theme);
   }
 
+  /* ─── Organic body via LatheGeometry ───────────────────────────────────── */
   _addBody(hp, theme) {
-    const rx = 0.6 + hp * 0.6;  // 0.6–1.2
-    const ry = 0.5 + hp * 0.4;  // 0.5–0.9
-    const rz = 0.5 + hp * 0.5;  // 0.5–1.0
-    this._bodySize = { rx, ry, rz };
+    const rx = 0.55 + hp * 0.55;
+    const ry = 0.50 + hp * 0.40;
+    const rz = 0.50 + hp * 0.50;
+    this._bs = { rx, ry, rz };
 
-    const geo = new THREE.SphereGeometry(1, 20, 20);
-    geo.scale(rx, ry, rz);
-
-    const mat = new THREE.MeshPhongMaterial({
-      color:              theme.primary,
-      emissive:           theme.emissive,
-      emissiveIntensity:  0.15,
-      shininess:          40,
-    });
-
-    const mesh = new THREE.Mesh(geo, mat);
+    // Profile curve for lathe — dragon-belly silhouette
+    const pts = [
+      new THREE.Vector2(0,            ry),
+      new THREE.Vector2(rx * 0.55,    ry * 0.6),
+      new THREE.Vector2(rx,           0),
+      new THREE.Vector2(rx * 0.75,   -ry * 0.5),
+      new THREE.Vector2(rx * 0.35,   -ry * 0.9),
+      new THREE.Vector2(0,           -ry),
+    ];
+    const geo  = new THREE.LatheGeometry(pts, 24, 0, Math.PI * 2);
+    const mesh = new THREE.Mesh(geo, this._mat(theme.primary));
+    mesh.scale.set(1, 1, rz / rx);          // squeeze into ellipsoid
+    mesh.rotation.x = -Math.PI / 2;        // stand upright
+    mesh.castShadow    = true;
+    mesh.receiveShadow = true;
     mesh.name = 'body';
+    this.group.add(mesh);
+    this._bodyMesh = mesh;
+  }
+
+  /* ─── Neck ─────────────────────────────────────────────────────────────── */
+  _addNeck(hp, theme) {
+    const { rx, ry } = this._bs;
+    const h = 0.3 + hp * 0.2;
+    const geo  = new THREE.CapsuleGeometry(rx * 0.28, h, 6, 10);
+    const mesh = new THREE.Mesh(geo, this._mat(theme.primary));
+    mesh.position.set(0, ry + h * 0.4, this._bs.rz * 0.25);
+    mesh.rotation.x = -0.3;
     mesh.castShadow = true;
     this.group.add(mesh);
   }
 
+  /* ─── Head ─────────────────────────────────────────────────────────────── */
   _addHead(hp, atk, theme) {
-    const { rx, ry, rz } = this._bodySize;
-    const headRadius = 0.3 + hp * 0.15;
-    const headY      = ry + headRadius * 0.8;
+    const { rx, ry, rz } = this._bs;
+    const hr = 0.28 + hp * 0.14;          // head radius
+    const hy = ry + 0.3 + hp * 0.2 + hr; // head Y pos
+    const hz = rz * 0.25;
 
-    const headMat = new THREE.MeshPhongMaterial({ color: theme.primary, shininess: 60 });
-    const head    = new THREE.Mesh(new THREE.SphereGeometry(headRadius, 14, 14), headMat);
-    head.position.set(0, headY, rz * 0.3);
-    head.name = 'head';
+    // Cranium
+    const cGeo  = new THREE.SphereGeometry(hr, 16, 14);
+    const head  = new THREE.Mesh(cGeo, this._mat(theme.primary));
+    head.position.set(0, hy, hz);
     head.castShadow = true;
+    head.name = 'head';
     this.group.add(head);
 
-    // Eyes
-    const eyeMat = new THREE.MeshPhongMaterial({ color: 0xffffff, emissive: theme.emissive, emissiveIntensity: 0.8 });
+    // Jaw — attack stat stretches it
+    const jawLen = 0.18 + atk * 0.38;
+    const jawGeo = new THREE.CylinderGeometry(hr * 0.22, hr * 0.35, jawLen, 8);
+    const jaw    = new THREE.Mesh(jawGeo, this._mat(theme.primary));
+    jaw.rotation.x = Math.PI / 2;
+    jaw.position.set(0, hy - hr * 0.25, hz + hr + jawLen / 2);
+    jaw.castShadow = true;
+    this.group.add(jaw);
+
+    // Eyes — glowing orbs
+    const eyeMat = this._mat(0xffffff, { emissiveIntensity: 1.2, roughness: 0.0, metalness: 0.0 });
+    eyeMat.emissive = new THREE.Color(theme.emissive);
+    const pupilMat = this._mat(theme.secondary, { emissiveIntensity: 2.0 });
     for (const side of [-1, 1]) {
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(headRadius * 0.18, 8, 8), eyeMat);
-      eye.position.set(side * headRadius * 0.45, headY + headRadius * 0.1, rz * 0.3 + headRadius * 0.8);
-      this.group.add(eye);
+      const eyeR  = hr * 0.20;
+      const eye   = new THREE.Mesh(new THREE.SphereGeometry(eyeR, 10, 10), eyeMat.clone());
+      const pupil = new THREE.Mesh(new THREE.SphereGeometry(eyeR * 0.55, 8, 8), pupilMat.clone());
+      eye.position.set(side * hr * 0.5, hy + hr * 0.15, hz + hr * 0.75);
+      pupil.position.copy(eye.position);
+      pupil.position.z += eyeR * 0.5;
+      this.group.add(eye, pupil);
     }
 
-    // Snout elongates with attack
-    const snoutLen = 0.15 + atk * 0.35;
-    const snoutGeo = new THREE.ConeGeometry(headRadius * 0.4, snoutLen, 8);
-    const snout    = new THREE.Mesh(snoutGeo, headMat);
-    snout.rotation.x = -Math.PI / 2;
-    snout.position.set(0, headY, rz * 0.3 + headRadius + snoutLen / 2);
-    this.group.add(snout);
+    // Brow ridges
+    const browMat = this._mat(theme.secondary, { emissiveIntensity: 0.0, roughness: 0.9 });
+    for (const side of [-1, 1]) {
+      const b = new THREE.Mesh(new THREE.CapsuleGeometry(hr * 0.10, hr * 0.3, 4, 6), browMat);
+      b.position.set(side * hr * 0.35, hy + hr * 0.38, hz + hr * 0.6);
+      b.rotation.z = side * 0.4;
+      this.group.add(b);
+    }
   }
 
-  _addClaws(atk, theme) {
-    const { rx, ry, rz } = this._bodySize;
-    const count      = atk > 0.66 ? 3 : atk > 0.33 ? 2 : 1;
-    const clawLength = 0.1 + atk * 0.45;
-    const clawRadius = 0.04 + atk * 0.04;
-    const mat = new THREE.MeshPhongMaterial({ color: theme.secondary, shininess: 80 });
+  /* ─── Legs ─────────────────────────────────────────────────────────────── */
+  _addLegs(hp, spd, theme) {
+    const { rx, ry, rz } = this._bs;
+    const legLen   = 0.45 + hp * 0.25;
+    const legRad   = 0.08 + hp * 0.06;
+    const footRad  = 0.09 + hp * 0.06;
+    const legMat   = this._mat(theme.secondary, { roughness: 0.75 });
+    const footMat  = this._mat(theme.secondary, { roughness: 0.9, metalness: 0.0 });
+
+    const positions = [
+      [-rx * 0.65, -ry * 0.65, rz * 0.4],
+      [ rx * 0.65, -ry * 0.65, rz * 0.4],
+      [-rx * 0.55, -ry * 0.65, -rz * 0.4],
+      [ rx * 0.55, -ry * 0.65, -rz * 0.4],
+    ];
+
+    for (const [x, y, z] of positions) {
+      // Upper leg
+      const upper = new THREE.Mesh(new THREE.CapsuleGeometry(legRad, legLen * 0.55, 4, 8), legMat.clone());
+      upper.position.set(x, y - legLen * 0.25, z);
+      upper.rotation.z = x > 0 ? 0.18 : -0.18;
+      upper.castShadow = true;
+      this.group.add(upper);
+      // Lower leg
+      const lower = new THREE.Mesh(new THREE.CapsuleGeometry(legRad * 0.75, legLen * 0.45, 4, 8), legMat.clone());
+      lower.position.set(x * 1.1, y - legLen * 0.65, z);
+      lower.rotation.z = x > 0 ? 0.35 : -0.35;
+      lower.castShadow = true;
+      this.group.add(lower);
+      // Foot
+      const foot = new THREE.Mesh(new THREE.SphereGeometry(footRad, 8, 6), footMat.clone());
+      foot.position.set(x * 1.2, y - legLen, z);
+      foot.scale.set(1.2, 0.5, 1.5);
+      foot.castShadow = true;
+      this.group.add(foot);
+    }
+  }
+
+  /* ─── Arms / Claws ─────────────────────────────────────────────────────── */
+  _addArms(atk, theme) {
+    const { rx, ry, rz } = this._bs;
+    const armLen   = 0.40 + atk * 0.30;
+    const armRad   = 0.065 + atk * 0.025;
+    const clawLen  = 0.12 + atk * 0.40;
+    const clawCnt  = atk > 0.66 ? 3 : atk > 0.33 ? 2 : 1;
+    const armMat   = this._mat(theme.primary,   { roughness: 0.65 });
+    const clawMat  = this._mat(theme.secondary, { roughness: 0.2, metalness: 0.6, emissiveIntensity: 0.3 });
 
     for (const side of [-1, 1]) {
-      for (let i = 0; i < count; i++) {
-        const angle = (i / count) * 0.6 - 0.3;
-        const geo   = new THREE.ConeGeometry(clawRadius, clawLength, 6);
-        const claw  = new THREE.Mesh(geo, mat);
+      // Upper arm
+      const arm = new THREE.Mesh(new THREE.CapsuleGeometry(armRad, armLen, 4, 8), armMat.clone());
+      arm.position.set(side * (rx + armLen * 0.3), ry * 0.1, rz * 0.3);
+      arm.rotation.z = side * (Math.PI / 2 + 0.2);
+      arm.castShadow = true;
+      this.group.add(arm);
+
+      // Claws spread from wrist
+      for (let i = 0; i < clawCnt; i++) {
+        const spread = ((i - (clawCnt - 1) / 2) / clawCnt) * 0.8;
+        const claw   = new THREE.Mesh(new THREE.ConeGeometry(armRad * 0.45, clawLen, 5), clawMat.clone());
         claw.position.set(
-          side * (rx + clawLength * 0.5),
-          -ry * 0.2 + i * 0.12,
-          Math.sin(angle) * rz * 0.3
+          side * (rx + armLen * 0.9),
+          ry * 0.1 - armLen * 0.3 + i * 0.08,
+          rz * 0.3 + spread
         );
-        claw.rotation.z = side * (Math.PI / 2 + angle * 0.5);
+        claw.rotation.z = side * (Math.PI / 2 + 0.1);
+        claw.rotation.y = spread * 0.6;
         claw.castShadow = true;
         this.group.add(claw);
       }
     }
   }
 
-  _addWings(spd, theme) {
-    if (spd < 0.05) return;
+  /* ─── Tail ─────────────────────────────────────────────────────────────── */
+  _addTail(atk, hp, theme) {
+    const { rx, ry, rz } = this._bs;
+    const tailMat = this._mat(theme.secondary, { roughness: 0.7 });
+    const segments = 5;
+    let posZ = -rz;
+    let curRad = rx * 0.28;
+    for (let i = 0; i < segments; i++) {
+      const seg = new THREE.Mesh(
+        new THREE.CapsuleGeometry(curRad * (1 - i * 0.15), 0.35, 4, 6),
+        tailMat.clone()
+      );
+      seg.position.set(0, -ry * 0.25 + Math.sin(i * 0.9) * 0.15, posZ - 0.2);
+      seg.rotation.x = 0.2 + i * 0.1;
+      seg.castShadow = true;
+      this.group.add(seg);
+      posZ -= 0.28;
+      curRad *= 0.75;
+    }
+  }
 
-    const { rx, ry } = this._bodySize;
-    const span   = 0.2 + spd * 1.4;
-    const height = 0.15 + spd * 0.6;
-    const mat    = new THREE.MeshPhongMaterial({
-      color:       theme.secondary,
+  /* ─── Wings ─────────────────────────────────────────────────────────────── */
+  _addWings(spd, theme) {
+    const { rx, ry } = this._bs;
+    const span     = 0.6 + spd * 1.8;
+    const height   = 0.5 + spd * 0.8;
+    const segments = 8;
+
+    const wingMat = this._mat(theme.secondary, {
       transparent: true,
-      opacity:     0.75,
+      opacity:     0.55 + spd * 0.15,
       side:        THREE.DoubleSide,
+      roughness:   0.3,
+      metalness:   0.1,
+      emissiveIntensity: 0.35,
     });
 
     for (const side of [-1, 1]) {
-      const verts = new Float32Array([
-        0,           0,             0,
-        side * span, height * 0.3, -span * 0.5,
-        side * span, -height,       0,
-      ]);
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
-      geo.computeVertexNormals();
-      const wing = new THREE.Mesh(geo, mat.clone());
-      wing.position.set(side * rx * 0.8, ry * 0.3, 0);
+      const shape = new THREE.Shape();
+      shape.moveTo(0, 0);
+      // Membrane outline — organic bat-wing curve
+      shape.bezierCurveTo(
+        span * 0.3, height * 0.5,
+        span * 0.7, height,
+        span, height * 0.6
+      );
+      shape.bezierCurveTo(
+        span * 0.8, height * 0.1,
+        span * 0.5, -height * 0.5,
+        0.15, -height * 0.3
+      );
+      shape.closePath();
+
+      // Add finger-bone ribs
+      const ribMat = this._mat(theme.secondary, { roughness: 0.3, metalness: 0.4 });
+      const ribCount = 4;
+      for (let r = 0; r < ribCount; r++) {
+        const t = (r + 1) / (ribCount + 1);
+        const ribLen = span * (0.5 + t * 0.5) * (1 - r * 0.15);
+        const rib    = new THREE.Mesh(
+          new THREE.CapsuleGeometry(0.018, ribLen, 3, 6),
+          ribMat.clone()
+        );
+        rib.position.set(
+          side * (rx * 0.8 + ribLen / 2),
+          ry * 0.3 + t * height * 0.6,
+          0
+        );
+        rib.rotation.z = side * (Math.PI / 2 - t * 0.4);
+        this.group.add(rib);
+      }
+
+      const geo  = new THREE.ShapeGeometry(shape, segments);
+      const wing = new THREE.Mesh(geo, wingMat.clone());
+      wing.position.set(side * rx * 0.8, ry * 0.2, 0);
+      wing.rotation.y = side * 0.15;
       wing.name = `wing_${side}`;
       this.group.add(wing);
     }
   }
 
+  /* ─── Ability appendages (redesigned) ──────────────────────────────────── */
   _addAbilityAppendage({ name, secondary, emissive }) {
-    const { rx, ry, rz } = this._bodySize;
-    const mat = new THREE.MeshPhongMaterial({
-      color:             secondary,
-      emissive:          emissive,
-      emissiveIntensity: 0.5,
-      shininess:         100,
-    });
+    const { rx, ry, rz } = this._bs;
+    const mat = this._mat(secondary, { emissiveIntensity: 0.8, roughness: 0.2 });
 
     switch (name) {
       case 'FIRE': {
-        // Ridge of 5 diminishing spine cones along the back
-        for (let i = 0; i < 5; i++) {
-          const h    = 0.45 - i * 0.07;
-          const mesh = new THREE.Mesh(new THREE.ConeGeometry(0.07, h, 5), mat.clone());
-          mesh.position.set(0, ry + h / 2, -rz * 0.2 + i * rz * 0.2);
+        // Dorsal spine ridge — 6 tapered spines
+        for (let i = 0; i < 6; i++) {
+          const h    = 0.55 - i * 0.07;
+          const mesh = new THREE.Mesh(
+            new THREE.ConeGeometry(0.05 + (5 - i) * 0.01, h, 5),
+            mat.clone()
+          );
+          mesh.position.set(0, ry * 0.8 + h / 2, -rz * 0.1 + i * rz * 0.22);
+          mesh.rotation.x = i * 0.07;
           this.group.add(mesh);
         }
         break;
       }
       case 'ICE': {
-        for (let i = 0; i < 4; i++) {
-          const angle = (i / 4) * Math.PI * 2;
-          const shard = new THREE.Mesh(new THREE.OctahedronGeometry(0.2, 0), mat.clone());
-          shard.position.set(Math.cos(angle) * rx * 0.5, ry * 0.7, Math.sin(angle) * rz * 0.5);
-          shard.rotation.set(Math.random() * 0.5, Math.random() * 0.5, Math.random() * 0.5);
+        // Crystal cluster crown
+        for (let i = 0; i < 6; i++) {
+          const angle = (i / 6) * Math.PI * 2;
+          const size  = 0.14 + (i % 3) * 0.08;
+          const shard = new THREE.Mesh(new THREE.OctahedronGeometry(size, 0), mat.clone());
+          shard.position.set(
+            Math.cos(angle) * rx * 0.6, ry * 0.75 + size,
+            Math.sin(angle) * rz * 0.5
+          );
+          shard.rotation.set(Math.random() * 0.4, Math.random() * Math.PI, Math.random() * 0.4);
           this.group.add(shard);
         }
         break;
       }
       case 'LIGHTNING': {
-        const horn = new THREE.Mesh(new THREE.TorusKnotGeometry(0.18, 0.045, 48, 5, 2, 3), mat.clone());
-        horn.position.set(0, ry + 0.65, rz * 0.3);
-        this.group.add(horn);
+        // Pair of helical horns
+        for (const side of [-1, 1]) {
+          const horn = new THREE.Mesh(
+            new THREE.TorusKnotGeometry(0.12, 0.035, 40, 4, 2, 3),
+            mat.clone()
+          );
+          horn.position.set(side * rx * 0.3, ry + 0.65, rz * 0.2);
+          horn.scale.set(1, 1.4, 1);
+          this.group.add(horn);
+        }
         break;
       }
       case 'POISON': {
-        const tailMat = mat.clone();
-        const tail    = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.04, rz, 8), tailMat);
-        tail.rotation.x = Math.PI / 2;
-        tail.position.set(0, -ry * 0.3, -(rz + rz / 2));
-        this.group.add(tail);
+        // Scorpion-style tail stinger (extra segment + bulb)
+        const bulb = new THREE.Mesh(
+          new THREE.SphereGeometry(0.14, 10, 10),
+          mat.clone()
+        );
+        bulb.position.set(0, -this._bs.ry * 0.2, -(rz * 2.2));
+        this.group.add(bulb);
 
-        const stinger = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.28, 6), tailMat);
-        stinger.rotation.x = -Math.PI / 2;
-        stinger.position.set(0, -ry * 0.3, -(rz * 2 + 0.12));
-        this.group.add(stinger);
+        const sting = new THREE.Mesh(
+          new THREE.ConeGeometry(0.07, 0.35, 6),
+          mat.clone()
+        );
+        sting.rotation.x = -Math.PI / 2;
+        sting.position.set(0, -this._bs.ry * 0.2, -(rz * 2.55));
+        this.group.add(sting);
         break;
       }
       case 'VOID': {
-        const ring = new THREE.Mesh(new THREE.TorusGeometry(rx * 0.95, 0.07, 8, 36), mat.clone());
-        ring.rotation.x = Math.PI / 3;
-        ring.name = 'voidRing';
-        this.group.add(ring);
+        // Three nested orbiting rings
+        const rings = [
+          { r: rx * 1.0, tube: 0.06, rotX: Math.PI / 3, rotZ: 0 },
+          { r: rx * 0.75, tube: 0.05, rotX: Math.PI / 5, rotZ: Math.PI / 4 },
+          { r: rx * 0.55, tube: 0.04, rotX: Math.PI * 0.7, rotZ: Math.PI / 6 },
+        ];
+        rings.forEach((cfg, idx) => {
+          const ring = new THREE.Mesh(
+            new THREE.TorusGeometry(cfg.r, cfg.tube, 8, 40),
+            mat.clone()
+          );
+          ring.rotation.x = cfg.rotX;
+          ring.rotation.z = cfg.rotZ;
+          ring.name = `voidRing_${idx}`;
+          this.group.add(ring);
+        });
         break;
       }
     }
+  }
+
+  /* ─── Inner point light ─────────────────────────────────────────────────── */
+  _addInnerLight(theme) {
+    const light = new THREE.PointLight(theme.emissive, 1.8, 4.5);
+    light.position.set(0, 0, 0);
+    light.name = 'innerLight';
+    this.group.add(light);
   }
 
   getGroup() { return this.group; }

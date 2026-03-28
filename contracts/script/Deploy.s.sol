@@ -10,7 +10,7 @@ contract Deploy is Script {
     function run() external {
         vm.startBroadcast();
 
-        CreatureCard card   = new CreatureCard("ipfs://YOUR_CID/");
+        CreatureCard card   = new CreatureCard("ipfs://creatures/");
         CardMinter   minter = new CardMinter(address(card));
         BattleEngine engine = new BattleEngine(address(card));
 

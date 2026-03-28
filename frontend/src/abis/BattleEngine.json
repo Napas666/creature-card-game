@@ -12,20 +12,26 @@
   },
   {
     "type": "function",
-    "name": "acceptAndResolve",
+    "name": "battle",
     "inputs": [
-      {
-        "name": "battleId",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
       {
         "name": "myTokenId",
         "type": "uint256",
         "internalType": "uint256"
+      },
+      {
+        "name": "opponentTokenId",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
-    "outputs": [],
+    "outputs": [
+      {
+        "name": "battleId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
     "stateMutability": "nonpayable"
   },
   {
@@ -51,11 +57,6 @@
       },
       {
         "name": "challenger",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "opponent",
         "type": "address",
         "internalType": "address"
       },
@@ -97,30 +98,6 @@
   },
   {
     "type": "function",
-    "name": "challenge",
-    "inputs": [
-      {
-        "name": "myTokenId",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "opponentTokenId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "battleId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "getBattle",
     "inputs": [
       {
@@ -147,11 +124,6 @@
           },
           {
             "name": "challenger",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "opponent",
             "type": "address",
             "internalType": "address"
           },
@@ -195,25 +167,6 @@
   },
   {
     "type": "function",
-    "name": "pendingChallenge",
-    "inputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "renounceOwnership",
     "inputs": [],
     "outputs": [],
@@ -244,31 +197,6 @@
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
-  },
-  {
-    "type": "event",
-    "name": "BattleCreated",
-    "inputs": [
-      {
-        "name": "battleId",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
-      },
-      {
-        "name": "challengerToken",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "opponentToken",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
   },
   {
     "type": "event",
@@ -322,39 +250,6 @@
   },
   {
     "type": "error",
-    "name": "BattleAlreadyResolved",
-    "inputs": [
-      {
-        "name": "battleId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ]
-  },
-  {
-    "type": "error",
-    "name": "BattleDoesNotExist",
-    "inputs": [
-      {
-        "name": "battleId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ]
-  },
-  {
-    "type": "error",
-    "name": "CardAlreadyInBattle",
-    "inputs": [
-      {
-        "name": "tokenId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ]
-  },
-  {
-    "type": "error",
     "name": "NotCardOwner",
     "inputs": [
       {
@@ -383,22 +278,6 @@
         "name": "account",
         "type": "address",
         "internalType": "address"
-      }
-    ]
-  },
-  {
-    "type": "error",
-    "name": "WrongOpponentCard",
-    "inputs": [
-      {
-        "name": "expected",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "got",
-        "type": "uint256",
-        "internalType": "uint256"
       }
     ]
   }
